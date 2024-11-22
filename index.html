@@ -25,8 +25,25 @@
         .fastest {
             background: #e6ffe6;
         }
+        .error {
+            background: #ffe6e6;
+        }
         .speed {
             color: #666;
+        }
+        .http-status {
+            margin-left: 10px;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 12px;
+        }
+        .status-ok {
+            background: #e6ffe6;
+            color: #008000;
+        }
+        .status-error {
+            background: #ffe6e6;
+            color: #cc0000;
         }
         .target-url {
             word-break: break-all;
@@ -38,7 +55,7 @@
     </style>
 </head>
 <body>
-    <div id="status" class="status">正在测速...</div>
+    <div id="status" class="status">正在测速及检查节点状态...</div>
     <div id="targetUrl" class="target-url"></div>
     <div id="results"></div>
 
@@ -52,18 +69,15 @@
             { name: "Github Pages", url: "https://github-blog.acofork.us.kg" }
         ];
 
-        // 获取请求路径（移除网关域名）
+        // 获取请求路径
         function getTargetPath() {
             const currentPath = window.location.pathname + window.location.search + window.location.hash;
             const targetUrl = new URL(window.location.href);
-            // 移除可能的端口号
             const currentHost = targetUrl.host.split(':')[0];
             
-            // 显示目标URL
             document.getElementById('targetUrl').textContent = 
                 `原始请求: ${window.location.href}`;
             
-            // 如果当前域名是网关域名，保留路径；否则使用根路径
             return currentHost === GATEWAY_DOMAIN ? currentPath : '/';
         }
 
@@ -72,12 +86,19 @@
         const statusDiv = document.getElementById('status');
 
         // 更新节点状态显示
-        function updateNodeStatus(node, speed) {
+        function updateNodeStatus(node, speed, httpStatus) {
             const nodeDiv = document.createElement('div');
             nodeDiv.className = 'node';
+            
+            const statusClass = httpStatus === 200 ? 'status-ok' : 'status-error';
+            const statusText = httpStatus === 200 ? 'OK' : `错误 ${httpStatus}`;
+            
             nodeDiv.innerHTML = `
                 <span>${node.name}</span>
-                <span class="speed">${speed === 99999 ? '超时' : speed + 'ms'}</span>
+                <span>
+                    <span class="speed">${speed === 99999 ? '超时' : speed + 'ms'}</span>
+                    <span class="http-status ${statusClass}">${statusText}</span>
+                </span>
             `;
             resultsDiv.appendChild(nodeDiv);
             return nodeDiv;
@@ -90,17 +111,30 @@
                 const controller = new AbortController();
                 const timeoutId = setTimeout(() => controller.abort(), 3000);
 
-                const response = await fetch(node.url, {
-                    mode: 'no-cors',
-                    cache: 'no-store',
+                // 测试实际请求路径而不是根路径
+                const testUrl = `${node.url}${targetPath}`;
+                const response = await fetch(testUrl, {
                     signal: controller.signal
                 });
                 
                 clearTimeout(timeoutId);
                 const speed = Math.round(performance.now() - startTime);
-                return { node, speed, nodeDiv: updateNodeStatus(node, speed) };
-            } catch {
-                return { node, speed: 99999, nodeDiv: updateNodeStatus(node, 99999) };
+                
+                // 返回完整状态，包括 HTTP 状态码
+                return { 
+                    node, 
+                    speed, 
+                    httpStatus: response.status,
+                    nodeDiv: updateNodeStatus(node, speed, response.status)
+                };
+            } catch (error) {
+                // 捕获网络错误或超时
+                return { 
+                    node, 
+                    speed: 99999, 
+                    httpStatus: 0,
+                    nodeDiv: updateNodeStatus(node, 99999, 0)
+                };
             }
         }
 
@@ -115,29 +149,31 @@
                     const result = await testNode(node);
                     completedTests++;
 
-                    if (result.speed < fastestSpeed && result.speed !== 99999) {
+                    // 只有当状态码为 200 时才考虑该节点
+                    if (result.speed < fastestSpeed && result.httpStatus === 200) {
                         if (fastestNode) {
                             fastestNode.nodeDiv.classList.remove('fastest');
                         }
                         fastestNode = result;
                         fastestSpeed = result.speed;
                         result.nodeDiv.classList.add('fastest');
+                    } else if (result.httpStatus !== 200) {
+                        result.nodeDiv.classList.add('error');
                     }
 
+                    // 所有测试完成后，如果找到可用节点则跳转
                     if (completedTests === nodes.length && fastestNode) {
                         const targetUrl = `${fastestNode.node.url}${targetPath}`;
-                        statusDiv.textContent = `已找到最快节点: ${fastestNode.node.name} (${fastestNode.speed}ms)，正在跳转到 ${targetUrl}`;
+                        statusDiv.textContent = `已找到最快可用节点: ${fastestNode.node.name} (${fastestNode.speed}ms, HTTP ${fastestNode.httpStatus})，正在跳转...`;
                         window.location.href = targetUrl;
+                    } else if (completedTests === nodes.length) {
+                        statusDiv.textContent = '未找到可用节点，请稍后重试';
                     }
                 });
 
                 await Promise.all(tests);
-                
-                if (!fastestNode) {
-                    statusDiv.textContent = '所有节点均无法访问，请刷新重试';
-                }
             } catch (error) {
-                statusDiv.textContent = '测速过程出错，请刷新重试';
+                statusDiv.textContent = '测试过程出错，请刷新重试';
             }
         }
 
