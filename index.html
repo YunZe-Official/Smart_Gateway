@@ -28,13 +28,23 @@
         .speed {
             color: #666;
         }
+        .target-url {
+            word-break: break-all;
+            padding: 8px;
+            background: #f8f8f8;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
     </style>
 </head>
 <body>
     <div id="status" class="status">正在测速...</div>
+    <div id="targetUrl" class="target-url"></div>
     <div id="results"></div>
 
     <script>
+        const GATEWAY_DOMAIN = 'smart.acofork.us.kg';
+        
         const nodes = [
             { name: "Cloudflare Pages", url: "https://blog.acofork.us.kg" },
             { name: "Fleek", url: "https://fleek-blog.acofork.us.kg" },
@@ -42,7 +52,22 @@
             { name: "Github Pages", url: "https://github-blog.acofork.us.kg" }
         ];
 
-        const currentPath = window.location.pathname + window.location.search + window.location.hash;
+        // 获取请求路径（移除网关域名）
+        function getTargetPath() {
+            const currentPath = window.location.pathname + window.location.search + window.location.hash;
+            const targetUrl = new URL(window.location.href);
+            // 移除可能的端口号
+            const currentHost = targetUrl.host.split(':')[0];
+            
+            // 显示目标URL
+            document.getElementById('targetUrl').textContent = 
+                `原始请求: ${window.location.href}`;
+            
+            // 如果当前域名是网关域名，保留路径；否则使用根路径
+            return currentHost === GATEWAY_DOMAIN ? currentPath : '/';
+        }
+
+        const targetPath = getTargetPath();
         const resultsDiv = document.getElementById('results');
         const statusDiv = document.getElementById('status');
 
@@ -63,7 +88,7 @@
             const startTime = performance.now();
             try {
                 const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 3000); // 3秒超时
+                const timeoutId = setTimeout(() => controller.abort(), 3000);
 
                 const response = await fetch(node.url, {
                     mode: 'no-cors',
@@ -79,19 +104,17 @@
             }
         }
 
-        // 测试所有节点
+        // 测试所有节点并重定向
         async function findFastestNode() {
             let completedTests = 0;
             let fastestNode = null;
             let fastestSpeed = Infinity;
 
             try {
-                // 并行测试所有节点
                 const tests = nodes.map(async node => {
                     const result = await testNode(node);
                     completedTests++;
 
-                    // 更新最快节点
                     if (result.speed < fastestSpeed && result.speed !== 99999) {
                         if (fastestNode) {
                             fastestNode.nodeDiv.classList.remove('fastest');
@@ -101,16 +124,15 @@
                         result.nodeDiv.classList.add('fastest');
                     }
 
-                    // 如果这是最快的可用节点，立即重定向
                     if (completedTests === nodes.length && fastestNode) {
-                        statusDiv.textContent = `已找到最快节点: ${fastestNode.node.name} (${fastestNode.speed}ms)，正在跳转...`;
-                        window.location.href = fastestNode.node.url + currentPath;
+                        const targetUrl = `${fastestNode.node.url}${targetPath}`;
+                        statusDiv.textContent = `已找到最快节点: ${fastestNode.node.name} (${fastestNode.speed}ms)，正在跳转到 ${targetUrl}`;
+                        window.location.href = targetUrl;
                     }
                 });
 
                 await Promise.all(tests);
                 
-                // 如果所有节点都测试完但都失败了
                 if (!fastestNode) {
                     statusDiv.textContent = '所有节点均无法访问，请刷新重试';
                 }
