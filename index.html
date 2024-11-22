@@ -9,6 +9,7 @@
             max-width: 600px;
             margin: 20px auto;
             padding: 0 20px;
+            user-select: none;
         }
         .status {
             background: #f0f0f0;
@@ -19,14 +20,30 @@
         .node {
             display: flex;
             justify-content: space-between;
-            padding: 8px;
-            border-bottom: 1px solid #eee;
+            padding: 12px;
+            border: 1px solid #eee;
+            margin: 8px 0;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .node:hover {
+            background: #f5f5f5;
+            transform: translateX(5px);
         }
         .fastest {
             background: #e6ffe6;
+            border-color: #b3d9b3;
+        }
+        .fastest:hover {
+            background: #d9f2d9;
         }
         .error {
             background: #ffe6e6;
+            border-color: #d9b3b3;
+        }
+        .error:hover {
+            background: #f2d9d9;
         }
         .speed {
             color: #666;
@@ -52,12 +69,71 @@
             margin: 10px 0;
             border-radius: 4px;
         }
+        .auto-jump {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #fff;
+            padding: 10px 20px;
+            border-radius: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 40px;
+            height: 20px;
+        }
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: .4s;
+            border-radius: 20px;
+        }
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 16px;
+            width: 16px;
+            left: 2px;
+            bottom: 2px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+        input:checked + .slider {
+            background-color: #2196F3;
+        }
+        input:checked + .slider:before {
+            transform: translateX(20px);
+        }
     </style>
 </head>
 <body>
     <div id="status" class="status">正在测速及检查节点状态...</div>
     <div id="targetUrl" class="target-url"></div>
     <div id="results"></div>
+    <div class="auto-jump">
+        <label class="switch">
+            <input type="checkbox" id="autoJumpToggle" checked>
+            <span class="slider"></span>
+        </label>
+        <span>自动跳转</span>
+    </div>
 
     <script>
         const GATEWAY_DOMAIN = 'smart.acofork.us.kg';
@@ -69,7 +145,23 @@
             { name: "Github Pages", url: "https://github-blog.acofork.us.kg" }
         ];
 
-        // 获取请求路径
+        let autoJump = true; // 默认开启自动跳转
+        const autoJumpToggle = document.getElementById('autoJumpToggle');
+        
+        // 当用户点击页面任意位置时禁用自动跳转
+        document.addEventListener('click', (e) => {
+            // 如果点击的不是开关按钮本身
+            if (!e.target.closest('#autoJumpToggle')) {
+                autoJump = false;
+                autoJumpToggle.checked = false;
+            }
+        });
+
+        // 开关切换事件
+        autoJumpToggle.addEventListener('change', (e) => {
+            autoJump = e.target.checked;
+        });
+
         function getTargetPath() {
             const currentPath = window.location.pathname + window.location.search + window.location.hash;
             const targetUrl = new URL(window.location.href);
@@ -85,7 +177,6 @@
         const resultsDiv = document.getElementById('results');
         const statusDiv = document.getElementById('status');
 
-        // 更新节点状态显示
         function updateNodeStatus(node, speed, httpStatus) {
             const nodeDiv = document.createElement('div');
             nodeDiv.className = 'node';
@@ -100,18 +191,26 @@
                     <span class="http-status ${statusClass}">${statusText}</span>
                 </span>
             `;
+
+            nodeDiv.addEventListener('click', () => {
+                const targetUrl = `${node.url}${targetPath}`;
+                if (httpStatus === 200) {
+                    window.location.href = targetUrl;
+                } else {
+                    alert(`警告：该节点当前返回 ${httpStatus} 状态码，可能无法访问。确定要继续访问吗？`);
+                }
+            });
+            
             resultsDiv.appendChild(nodeDiv);
             return nodeDiv;
         }
 
-        // 测试单个节点
         async function testNode(node) {
             const startTime = performance.now();
             try {
                 const controller = new AbortController();
                 const timeoutId = setTimeout(() => controller.abort(), 3000);
 
-                // 测试实际请求路径而不是根路径
                 const testUrl = `${node.url}${targetPath}`;
                 const response = await fetch(testUrl, {
                     signal: controller.signal
@@ -120,7 +219,6 @@
                 clearTimeout(timeoutId);
                 const speed = Math.round(performance.now() - startTime);
                 
-                // 返回完整状态，包括 HTTP 状态码
                 return { 
                     node, 
                     speed, 
@@ -128,7 +226,6 @@
                     nodeDiv: updateNodeStatus(node, speed, response.status)
                 };
             } catch (error) {
-                // 捕获网络错误或超时
                 return { 
                     node, 
                     speed: 99999, 
@@ -138,7 +235,6 @@
             }
         }
 
-        // 测试所有节点并重定向
         async function findFastestNode() {
             let completedTests = 0;
             let fastestNode = null;
@@ -149,7 +245,6 @@
                     const result = await testNode(node);
                     completedTests++;
 
-                    // 只有当状态码为 200 时才考虑该节点
                     if (result.speed < fastestSpeed && result.httpStatus === 200) {
                         if (fastestNode) {
                             fastestNode.nodeDiv.classList.remove('fastest');
@@ -161,13 +256,16 @@
                         result.nodeDiv.classList.add('error');
                     }
 
-                    // 所有测试完成后，如果找到可用节点则跳转
-                    if (completedTests === nodes.length && fastestNode) {
-                        const targetUrl = `${fastestNode.node.url}${targetPath}`;
-                        statusDiv.textContent = `已找到最快可用节点: ${fastestNode.node.name} (${fastestNode.speed}ms, HTTP ${fastestNode.httpStatus})，正在跳转...`;
-                        window.location.href = targetUrl;
-                    } else if (completedTests === nodes.length) {
-                        statusDiv.textContent = '未找到可用节点，请稍后重试';
+                    if (completedTests === nodes.length) {
+                        if (fastestNode) {
+                            statusDiv.textContent = `测速完成！最快节点: ${fastestNode.node.name} (${fastestNode.speed}ms, HTTP ${fastestNode.httpStatus})`;
+                            if (autoJump) {
+                                const targetUrl = `${fastestNode.node.url}${targetPath}`;
+                                window.location.href = targetUrl;
+                            }
+                        } else {
+                            statusDiv.textContent = '未找到可用节点，请稍后重试';
+                        }
                     }
                 });
 
