@@ -54,7 +54,8 @@
         // 如果响应时间低于阈值，立刻跳转
         if (parseFloat(duration) < speedThreshold) {
           const currentUrlParams = window.location.search; // 获取当前页面的查询参数
-          window.location.href = appendQueryParams(url, currentUrlParams); // 保留查询参数并跳转
+          const currentPath = window.location.pathname; // 获取当前页面的路径
+          window.location.href = appendQueryParams(url, currentPath, currentUrlParams); // 保留路径和查询参数并跳转
         }
       } catch (error) {
         console.error(`无法测试链接速度: ${url}`, error);
@@ -62,13 +63,14 @@
       }
     }
 
-    // 为跳转 URL 添加查询参数
-    function appendQueryParams(url, queryParams) {
+    // 为跳转 URL 添加路径和查询参数
+    function appendQueryParams(url, path, queryParams) {
       const urlObject = new URL(url); // 创建 URL 对象
+      urlObject.pathname = path; // 保留原路径
       if (queryParams) {
         urlObject.search = queryParams; // 添加原有查询参数
       }
-      return urlObject.toString(); // 返回带有查询参数的完整 URL
+      return urlObject.toString(); // 返回带有路径和查询参数的完整 URL
     }
 
     // 渲染博客数据并测速
@@ -108,7 +110,8 @@
         fastestLinks.sort((a, b) => a.duration - b.duration); // 按响应时间排序
         const fastestLink = fastestLinks[0].url;
         const currentUrlParams = window.location.search; // 获取当前页面的查询参数
-        window.location.href = appendQueryParams(fastestLink, currentUrlParams); // 跳转并附加查询参数
+        const currentPath = window.location.pathname; // 获取当前页面的路径
+        window.location.href = appendQueryParams(fastestLink, currentPath, currentUrlParams); // 跳转并附加路径和查询参数
       }
     }
 
