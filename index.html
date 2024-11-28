@@ -1,315 +1,107 @@
 <!DOCTYPE html>
-<html>
+<html lang="zh">
 <head>
-    <meta charset="UTF-8">
-    <link rel="icon" type="image/png" href="https://q2.qlogo.cn/headimg_dl?dst_uin=2973517380&spec=5">
-    <title>智能网关</title>
-    <style>
-        body {
-            font-family: -apple-system, system-ui, sans-serif;
-            max-width: 600px;
-            margin: 20px auto;
-            padding: 0 20px;
-            user-select: none;
-        }
-        .status {
-            background: #f0f0f0;
-            padding: 10px;
-            margin: 10px 0;
-            border-radius: 4px;
-        }
-        .node {
-            display: flex;
-            justify-content: space-between;
-            padding: 12px;
-            border: 1px solid #eee;
-            margin: 8px 0;
-            border-radius: 4px;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-        .node:hover {
-            background: #f5f5f5;
-            transform: translateX(5px);
-        }
-        .fastest {
-            background: #e6ffe6;
-            border-color: #b3d9b3;
-        }
-        .fastest:hover {
-            background: #d9f2d9;
-        }
-        .error {
-            background: #ffe6e6;
-            border-color: #d9b3b3;
-        }
-        .error:hover {
-            background: #f2d9d9;
-        }
-        .speed {
-            color: #666;
-        }
-        .target-url {
-            word-break: break-all;
-            padding: 8px;
-            background: #f8f8f8;
-            margin: 10px 0;
-            border-radius: 4px;
-        }
-        .auto-jump {
-            position: fixed;
-            bottom: 20px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: #fff;
-            padding: 10px 20px;
-            border-radius: 20px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-        .switch {
-            position: relative;
-            display: inline-block;
-            width: 40px;
-            height: 20px;
-        }
-        .switch input {
-            opacity: 0;
-            width: 0;
-            height: 0;
-        }
-        .slider {
-            position: absolute;
-            cursor: pointer;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background-color: #ccc;
-            transition: .4s;
-            border-radius: 20px;
-        }
-        .slider:before {
-            position: absolute;
-            content: "";
-            height: 16px;
-            width: 16px;
-            left: 2px;
-            bottom: 2px;
-            background-color: white;
-            transition: .4s;
-            border-radius: 50%;
-        }
-        input:checked + .slider {
-            background-color: #2196F3;
-        }
-        input:checked + .slider:before {
-            transform: translateX(20px);
-        }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AcoFork's Smart Gateway</title>
 </head>
 <body>
-    <div id="status" class="status">正在测速及检查节点状态...</div>
-    <div id="targetUrl" class="target-url"></div>
-    <div id="results"></div>
-    <div class="auto-jump">
-        <label class="switch">
-            <input type="checkbox" id="autoJumpToggle" checked>
-            <span class="slider"></span>
-        </label>
-        <span>自动跳转</span>
-    </div>
+  <header>
+    <h1 id="title">AcoFork's Smart Gateway Testing...</h1>
+  </header>
+  <main id="content">
+    <p class="loading">加载中...</p>
+  </main>
 
-    <script>
-        const GATEWAY_DOMAIN = 'smart.acofork.us.kg';
-        let nodes = [];
-        let autoJump = true; // 默认开启自动跳转
-        const autoJumpToggle = document.getElementById('autoJumpToggle');
+  <script>
+    // 设置一个阈值，如果某个链接响应时间低于该值就立刻跳转
+    const speedThreshold = 200; // 单位: 毫秒
+    let fastestLinks = []; // 存储所有链接的测速结果
 
-        // 当用户点击页面任意位置时禁用自动跳转
-        document.addEventListener('click', (e) => {
-            if (!e.target.closest('#autoJumpToggle')) {
-                autoJump = false;
-                autoJumpToggle.checked = false;
-            }
-        });
-
-        autoJumpToggle.addEventListener('change', (e) => {
-            autoJump = e.target.checked;
-        });
-
-        function getTargetPath() {
-            const currentPath = window.location.pathname + window.location.search + window.location.hash;
-            const targetUrl = new URL(window.location.href);
-            const currentHost = targetUrl.host.split(':')[0];
-
-            document.getElementById('targetUrl').textContent = 
-                `原始请求: ${window.location.href}`;
-
-            return currentHost === GATEWAY_DOMAIN ? currentPath : '/';
-        }
-
-        const targetPath = getTargetPath();
-        const resultsDiv = document.getElementById('results');
-        const statusDiv = document.getElementById('status');
-
-        // 从 JSON 获取博客节点
-        async function fetchBlogNodes() {
-            try {
-                const response = await fetch('https://acofork.us.kg/data.json');
-                const data = await response.json();
-
-                const blogSection = data.sections.find(section => section.name === "博客");
-
-                if (blogSection && blogSection.links) {
-                    nodes = blogSection.links;
-                    findFastestNode();
-                } else {
-                    throw new Error('未找到名为 "博客" 的部分');
-                }
-            } catch (error) {
-                statusDiv.textContent = '请求数据时出错: ' + error.message;
-            }
-        }
-
-        function updateNodeStatus(node, speed) {
-            const nodeDiv = document.createElement('div');
-            nodeDiv.className = 'node';
-
-            const statusClass = speed === 99999 ? 'error' : 'status-ok';
-            const statusText = speed === 99999 ? '超时' : `${speed}ms`;
-
-            nodeDiv.innerHTML = `
-                <span>${node.name}</span>
-                <span>
-                    <span class="speed">${statusText}</span>
-                    <span class="http-status ${statusClass}">${statusText}</span>
-                </span>
-            `;
-
-            nodeDiv.addEventListener('click', () => {
-                const targetUrl = `${node.url}${targetPath}`;
-                if (speed !== 99999) {
-                    window.location.href = targetUrl;
-                } else {
-                    alert(`警告：该节点超时，可能无法访问。确定要继续访问吗？`);
-                }
-            });
-
-            resultsDiv.appendChild(nodeDiv);
-            return nodeDiv;
-        }
-
-        async function testNode(node) {
-    const startTime = performance.now();
-    let imageSize = 0;
-    
-    return new Promise((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        xhr.open('HEAD', `${node.url}/1.jpg?${Math.random()}`, true);
-        xhr.onload = () => {
-            imageSize = parseInt(xhr.getResponseHeader('Content-Length'));
-            loadImage();
-        };
-        xhr.onerror = () => {
-            const loadTime = Math.round(performance.now() - startTime);
-            const nodeDiv = updateNodeStatus(node, loadTime);
-            resolve({ speed: loadTime, node, nodeDiv });
-        };
-        xhr.send();
-
-        const img = new Image();
-        img.crossOrigin = "anonymous";
-
-        img.onload = () => {
-            const loadTime = Math.round(performance.now() - startTime);
-            const nodeDiv = updateNodeStatus(node, loadTime);
-            resolve({ speed: loadTime, node, nodeDiv });
-        };
-
-        img.onerror = () => {
-            const loadTime = Math.round(performance.now() - startTime);
-            const nodeDiv = updateNodeStatus(node, loadTime);
-            resolve({ speed: loadTime, node, nodeDiv });
-        };
-
-        function loadImage() {
-            const testUrl = `${node.url}/1.jpg?${Math.random()}`;
-            img.src = testUrl;
-        }
-    });
-}
-
-function updateNodeStatus(node, loadTime) {
-    const nodeDiv = document.createElement('div');
-    nodeDiv.className = 'node';
-
-    const statusText = loadTime === 99999 ? `加载超时` : `${loadTime}ms`;
-    const statusClass = loadTime === 99999 ? 'error' : 'status-ok';
-
-    nodeDiv.innerHTML = `
-        <span>${node.name}</span>
-        <span>
-            <span class="speed">${statusText}</span>
-        </span>
-    `;
-    
-    nodeDiv.classList.add(statusClass);
-
-    nodeDiv.addEventListener('click', () => {
-        const targetUrl = `${node.url}${targetPath}`;
-        if (loadTime < 99999) {
-            window.location.href = targetUrl;
-        } else {
-            alert(`警告：该节点当前加载超时，可能无法访问。确定要继续访问吗？`);
-        }
-    });
-
-    resultsDiv.appendChild(nodeDiv);
-    return nodeDiv;
-}
-
-async function findFastestNode() {
-    let fastestNode = null;
-    let fastestSpeed = Infinity;
-
-    try {
-        const tests = nodes.map(async node => {
-            const result = await testNode(node);
-            
-            if (result.speed < fastestSpeed && result.speed !== 99999) {
-                if (fastestNode) {
-                    fastestNode.nodeDiv.classList.remove('fastest');
-                }
-                fastestNode = result;
-                fastestSpeed = result.speed;
-                result.nodeDiv.classList.add('fastest');
-            } else if (result.speed === 99999) {
-                result.nodeDiv.classList.add('error');
-            }
-        });
-
-        await Promise.all(tests);
-
-        if (fastestNode) {
-            statusDiv.textContent = `测速完成！最快节点: ${fastestNode.node.name} (${fastestSpeed}ms)`;
-            if (autoJump) {
-                const targetUrl = `${fastestNode.node.url}${targetPath}`;
-                window.location.href = targetUrl;
-            }
-        } else {
-            statusDiv.textContent = '未找到可用节点，请稍后重试';
-        }
-    } catch (error) {
-        statusDiv.textContent = '测试过程出错，请刷新重试';
+    // 获取数据
+    async function fetchNavigationData() {
+      try {
+        const response = await fetch('https://acofork.us.kg/data.json');  // 从 https://acofork.us.kg/data.json 获取数据
+        if (!response.ok) throw new Error(`HTTP 错误: ${response.status}`);
+        const data = await response.json();
+        renderNavigation(data);
+      } catch (error) {
+        console.error('加载导航数据失败:', error);
+        document.getElementById('content').innerHTML = '<p>导航数据加载失败，请稍后再试。</p>';
+      }
     }
-}
-        // 启动请求博客节点并开始测速
-        fetchBlogNodes();
 
-    </script>
-    
+    // 创建元素
+    function createElement(tag, className, textContent = '') {
+      const element = document.createElement(tag);
+      if (className) element.className = className;
+      if (textContent) element.textContent = textContent;
+      return element;
+    }
+
+    // 测速函数
+    async function testSpeed(url, element) {
+      const startTime = performance.now();
+      try {
+        await fetch(url, { method: 'HEAD', mode: 'no-cors' });
+        const endTime = performance.now();
+        const duration = (endTime - startTime).toFixed(2);
+        element.innerText = `${duration} ms`;
+
+        // 保存测速结果
+        fastestLinks.push({ url, duration: parseFloat(duration) });
+
+        // 如果响应时间低于阈值，立刻跳转
+        if (parseFloat(duration) < speedThreshold) {
+          window.location.href = url + '?t=' + new Date().getTime(); // 跳转时添加时间戳避免缓存
+        }
+      } catch (error) {
+        console.error(`无法测试链接速度: ${url}`, error);
+        element.innerText = '无法访问';
+      }
+    }
+
+    // 渲染博客数据并测速
+    async function renderNavigation(data) {
+      const content = document.getElementById('content');
+      content.innerHTML = ''; // 清空加载动画
+
+      const section = data.sections.find(sec => sec.name === '博客'); // 找到博客部分
+      if (!section) {
+        content.innerHTML = '<p>没有找到博客部分</p>';
+        return;
+      }
+
+      const promises = [];
+      const list = createElement('ul');
+
+      section.links.forEach(link => {
+        const listItem = createElement('li');
+        const anchor = createElement('a', '', link.name);
+        anchor.href = link.url + '?t=' + new Date().getTime(); // 加上时间戳避免缓存
+        anchor.target = '_blank';
+        anchor.rel = 'noopener noreferrer';
+
+        const speedSpan = createElement('span', '', '测试中...');
+        listItem.appendChild(anchor);
+        listItem.appendChild(speedSpan);
+        list.appendChild(listItem);
+
+        promises.push(testSpeed(link.url, speedSpan));
+      });
+
+      content.appendChild(list);
+      await Promise.all(promises); // 等待所有测速完成
+
+      // 排序所有链接并跳转到最快的一个
+      if (fastestLinks.length > 0) {
+        fastestLinks.sort((a, b) => a.duration - b.duration); // 按响应时间排序
+        const fastestLink = fastestLinks[0].url;
+        window.location.href = fastestLink + '?t=' + new Date().getTime(); // 跳转时加上时间戳避免缓存
+      }
+    }
+
+    fetchNavigationData();
+  </script>
 </body>
 </html>
