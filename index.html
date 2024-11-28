@@ -13,11 +13,50 @@
     <p class="loading">加载中...</p>
   </main>
 
-  <script>
-    // 设置一个阈值，如果某个链接响应时间低于该值就立刻跳转
-    const speedThreshold = 200; // 单位: 毫秒
-    let fastestLinks = []; // 存储所有链接的测速结果
+<script>
+  // 设置一个阈值，如果某个链接响应时间低于该值就立刻跳转
+  const speedThreshold = 200; // 单位: 毫秒
+  let fastestLinks = []; // 存储所有链接的测速结果
+  let autoRedirectEnabled = true; // 控制自动跳转的开关
+  let hasShownDisableMessage = false; // 控制是否已经显示过提示信息
 
+  // 递归判断点击是否为空白区域
+  function isClickOnEmptyArea(element) {
+    // 排除具体的内容区域和链接
+    const contentArea = document.getElementById('content');
+    const isInContentArea = contentArea.contains(element);
+    const isLink = element.tagName.toLowerCase() === 'a';
+
+    // 如果点击在内容区域或链接上，不认为是空白区域
+    if (isInContentArea || isLink) {
+      return false;
+    }
+
+    // 点击在 body 或 html 上
+    return element === document.body || element === document.documentElement;
+  }
+
+  // 监听点击事件，判断是否点击了空白区域
+  document.documentElement.addEventListener('click', function(event) {
+    if (isClickOnEmptyArea(event.target) && !hasShownDisableMessage) {
+      autoRedirectEnabled = false; // 禁用自动跳转
+      showAutoRedirectDisabledMessage(); // 显示提示信息
+    }
+  });
+
+  // 显示自动跳转已关闭的提示
+  function showAutoRedirectDisabledMessage() {
+    // 创建提示元素
+    const message = document.createElement('p');
+    message.innerText = '自动跳转已关闭';
+
+    // 将提示信息添加到页面的最后
+    document.body.appendChild(message);
+
+    // 标记已显示提示信息
+    hasShownDisableMessage = true;
+  }
+  
     // 获取数据
     async function fetchNavigationData() {
       try {
@@ -30,7 +69,7 @@
         document.getElementById('content').innerHTML = '<p>导航数据加载失败，请稍后再试。</p>';
       }
     }
-
+  
     // 创建元素
     function createElement(tag, className, textContent = '') {
       const element = document.createElement(tag);
@@ -38,7 +77,7 @@
       if (textContent) element.textContent = textContent;
       return element;
     }
-
+  
     // 测速函数
     async function testSpeed(url, element) {
       const startTime = performance.now();
@@ -47,12 +86,12 @@
         const endTime = performance.now();
         const duration = (endTime - startTime).toFixed(2);
         element.innerText = `${duration} ms`;
-
+  
         // 保存测速结果
         fastestLinks.push({ url, duration: parseFloat(duration) });
-
-        // 如果响应时间低于阈值，立刻跳转
-        if (parseFloat(duration) < speedThreshold) {
+  
+        // 如果自动跳转被启用且响应时间低于阈值，立刻跳转
+        if (autoRedirectEnabled && parseFloat(duration) < speedThreshold) {
           const currentUrlParams = window.location.search; // 获取当前页面的查询参数
           const currentPath = window.location.pathname; // 获取当前页面的路径
           window.location.href = appendQueryParams(url, currentPath, currentUrlParams); // 保留路径和查询参数并跳转
@@ -62,7 +101,7 @@
         element.innerText = '无法访问';
       }
     }
-
+  
     // 为跳转 URL 添加路径和查询参数
     function appendQueryParams(url, path, queryParams) {
       const urlObject = new URL(url); // 创建 URL 对象
@@ -72,41 +111,41 @@
       }
       return urlObject.toString(); // 返回带有路径和查询参数的完整 URL
     }
-
+  
     // 渲染博客数据并测速
     async function renderNavigation(data) {
       const content = document.getElementById('content');
       content.innerHTML = ''; // 清空加载动画
-
+  
       const section = data.sections.find(sec => sec.name === '博客'); // 找到博客部分
       if (!section) {
         content.innerHTML = '<p>没有找到博客部分</p>';
         return;
       }
-
+  
       const promises = [];
       const list = createElement('ul');
-
+  
       section.links.forEach(link => {
         const listItem = createElement('li');
         const anchor = createElement('a', '', link.name);
         anchor.href = link.url + '?t=' + new Date().getTime(); // 加上时间戳避免缓存
         anchor.target = '_blank';
         anchor.rel = 'noopener noreferrer';
-
+  
         const speedSpan = createElement('span', '', '测试中...');
         listItem.appendChild(anchor);
         listItem.appendChild(speedSpan);
         list.appendChild(listItem);
-
+  
         promises.push(testSpeed(link.url, speedSpan));
       });
-
+  
       content.appendChild(list);
       await Promise.all(promises); // 等待所有测速完成
-
+  
       // 排序所有链接并跳转到最快的一个
-      if (fastestLinks.length > 0) {
+      if (fastestLinks.length > 0 && autoRedirectEnabled) {
         fastestLinks.sort((a, b) => a.duration - b.duration); // 按响应时间排序
         const fastestLink = fastestLinks[0].url;
         const currentUrlParams = window.location.search; // 获取当前页面的查询参数
@@ -114,7 +153,7 @@
         window.location.href = appendQueryParams(fastestLink, currentPath, currentUrlParams); // 跳转并附加路径和查询参数
       }
     }
-
+  
     fetchNavigationData();
   </script>
 </body>
