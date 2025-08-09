@@ -1,0 +1,11 @@
+{
+  "sections": [
+    {
+      "name": "资源站",
+      "links": [
+        { "name": "EdgeOne-CDN", "url": "https://pan.loveu.im" },
+        { "name": "Netlify-CDN", "url": "https://file.loveu.im" }
+      ]
+    }
+  ]
+}
